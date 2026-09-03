@@ -6,12 +6,13 @@ from ultralytics import YOLO
 
   
 def main():
+    root_dir = Path(__file__).resolve().parent
 
     # 自定义实验名称
     run_name = "yolo26-baseline-e200-b16-s42"
 
-    # 输出目录
-    out_dir = "./outputs"
+    # 训练结果固定保存到项目根目录 outputs
+    out_dir = root_dir / "outputs"
 
     # 检查上次训练是否训练完成
     last_ckpt = Path(out_dir) / run_name / "weights" / "last.pt"
