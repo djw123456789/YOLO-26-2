@@ -14,6 +14,7 @@ from torch import nn
 
 from ultralytics.nn.autobackend import check_class_names
 from ultralytics.nn.modules import (
+    EFCM,
     AIFI,
     C1,
     C2,
@@ -1989,6 +1990,7 @@ def parse_model(d, ch, verbose=True):
     layers, save, c2 = [], [], ch[-1]  # layers, savelist, ch out
     base_modules = frozenset(
         {
+            EFCM,
             Classify,
             Conv,
             ConvTranspose,

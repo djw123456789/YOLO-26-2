@@ -1,3 +1,7 @@
 datasets/*
 tools/*
 tt100k_aug_log/*
+
+# Python cache
+__pycache__/
+*.py[cod]

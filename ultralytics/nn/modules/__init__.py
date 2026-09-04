@@ -17,6 +17,10 @@ Examples:
     >>> subprocess.run(f"onnxslim {f} {f} && open {f}", shell=True, check=True)  # pip install onnxslim
 """
 
+from .improve import (
+    EFCM
+)
+
 from .block import (
     C1,
     C2,
@@ -109,6 +113,7 @@ from .transformer import (
 )
 
 __all__ = (
+    "EFCM",
     "AIFI",
     "C1",
     "C2",
