@@ -12,7 +12,8 @@ def main():
     run_name = "540-yolo26-efcm-e200-b16-s42"
 
     # 训练结果固定保存到项目根目录 outputs
-    out_dir = root_dir / "outputs"
+    out_dir = root_dir / "outputs" / "no-pretrained"
+    # out_dir = root_dir / "outputs" / "pretrained"
 
     # 检查上次训练是否训练完成
     last_ckpt = Path(out_dir) / run_name / "weights" / "last.pt"
@@ -47,7 +48,8 @@ def main():
         batch=16,
         device=device,
         resume=resume,
-        pretrained=pretrained,
+        # pretrained=pretrained,
+        pretrained=False,
         workers=2,
         seed=seed,
         project=out_dir,
