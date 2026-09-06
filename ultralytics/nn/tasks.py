@@ -15,6 +15,8 @@ from torch import nn
 from ultralytics.nn.autobackend import check_class_names
 from ultralytics.nn.modules import (
     EFCM,
+    PSICConv,
+    # -----------------以上是改进的模块
     AIFI,
     C1,
     C2,
@@ -1991,6 +1993,8 @@ def parse_model(d, ch, verbose=True):
     base_modules = frozenset(
         {
             EFCM,
+            PSICConv,
+            # -----------------以上是改进的模块
             Classify,
             Conv,
             ConvTranspose,

@@ -25,7 +25,7 @@ def main():
     seed = 42
 
     # 模型配置
-    model_cfg = "./yolo26n-efcm.yaml"
+    model_cfg = "./yolo26n-psicconv.yaml"
 
     # 预训练权重
     pretrained_ckpt = "yolo26n.pt"

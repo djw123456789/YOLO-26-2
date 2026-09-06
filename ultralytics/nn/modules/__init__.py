@@ -18,7 +18,8 @@ Examples:
 """
 
 from .improve import (
-    EFCM
+    EFCM,
+    PSICConv,
 )
 
 from .block import (
@@ -114,6 +115,8 @@ from .transformer import (
 
 __all__ = (
     "EFCM",
+    "PSICConv",
+    # -----------------以上是改进的模块
     "AIFI",
     "C1",
     "C2",
