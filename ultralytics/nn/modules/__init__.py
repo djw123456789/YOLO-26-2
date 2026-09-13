@@ -20,6 +20,7 @@ Examples:
 from .improve import (
     EFCM,
     PSICConv,
+    WGFS,
 )
 
 from .block import (
@@ -116,6 +117,7 @@ from .transformer import (
 __all__ = (
     "EFCM",
     "PSICConv",
+    "WGFS",
     # -----------------以上是改进的模块
     "AIFI",
     "C1",

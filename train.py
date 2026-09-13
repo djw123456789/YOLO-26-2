@@ -9,7 +9,7 @@ def main():
     root_dir = Path(__file__).resolve().parent
 
     # 自定义实验名称
-    run_name = "540-yolo26-psicconv-e200-b16-s42"
+    run_name = "2160-yolo26-wgfs-e200-b16-s42"
 
     # 训练结果固定保存到项目根目录 outputs
     out_dir = root_dir / "outputs" / "no-pretrained"
@@ -25,7 +25,7 @@ def main():
     seed = 42
 
     # 模型配置
-    model_cfg = "./yolo26n-psicconv.yaml"
+    model_cfg = "./yolo26n-wgfs.yaml"
 
     # 预训练权重
     pretrained_ckpt = "yolo26n.pt"
@@ -42,7 +42,7 @@ def main():
 
     # 开始训练
     model.train(
-        data="./datasets/tt100k_aug/TT100K.yaml",  # 数据集配置
+        data="./datasets/tt100k_aug_2160/TT100K.yaml",  # 数据集配置
         epochs=200,
         imgsz=640,
         batch=16,

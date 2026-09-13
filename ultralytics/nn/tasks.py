@@ -16,6 +16,7 @@ from ultralytics.nn.autobackend import check_class_names
 from ultralytics.nn.modules import (
     EFCM,
     PSICConv,
+    WGFS,
     # -----------------以上是改进的模块
     AIFI,
     C1,
@@ -1994,6 +1995,7 @@ def parse_model(d, ch, verbose=True):
         {
             EFCM,
             PSICConv,
+            WGFS,
             # -----------------以上是改进的模块
             Classify,
             Conv,
