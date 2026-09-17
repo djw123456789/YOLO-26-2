@@ -9,7 +9,7 @@ def main():
     root_dir = Path(__file__).resolve().parent
 
     # 自定义实验名称
-    run_name = "2160-yolo26-wgfs-e200-b16-s42"
+    run_name = "2160-yolo26-agrf-e200-b16-s42"
 
     # 训练结果固定保存到项目根目录 outputs
     out_dir = root_dir / "outputs" / "no-pretrained"
@@ -25,7 +25,7 @@ def main():
     seed = 42
 
     # 模型配置
-    model_cfg = "./yolo26n-wgfs.yaml"
+    model_cfg = "./yolo26n-agrf.yaml"
 
     # 预训练权重
     pretrained_ckpt = "yolo26n.pt"

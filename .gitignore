@@ -4,4 +4,8 @@ tt100k_aug_log/*
 
 # Python cache
 __pycache__/
-# *.py[cod]
+*.py[cod]
+
+ultralytics/nn/__pycache__/*
+
+*.pyc
