@@ -763,13 +763,23 @@ class BaseTrainer:
         )
         serialized_ckpt = buffer.getvalue()  # get the serialized content to save
 
-        # Save checkpoints
+        # Save checkpoints atomically. Writing directly over last.pt can leave the only resumable checkpoint
+        # corrupted when Windows rejects or interrupts an in-place write.
         self.wdir.mkdir(parents=True, exist_ok=True)  # ensure weights directory exists
-        self.last.write_bytes(serialized_ckpt)  # save last.pt
+
+        def save_checkpoint(path: Path):
+            tmp = path.with_name(f".{path.name}.tmp")
+            try:
+                tmp.write_bytes(serialized_ckpt)
+                tmp.replace(path)
+            finally:
+                tmp.unlink(missing_ok=True)
+
+        save_checkpoint(self.last)  # save last.pt
         if self.best_fitness == self.fitness:
-            self.best.write_bytes(serialized_ckpt)  # save best.pt
+            save_checkpoint(self.best)  # save best.pt
         if (self.save_period > 0) and (self.epoch % self.save_period == 0):
-            (self.wdir / f"epoch{self.epoch}.pt").write_bytes(serialized_ckpt)  # save epoch, i.e. 'epoch3.pt'
+            save_checkpoint(self.wdir / f"epoch{self.epoch}.pt")  # save epoch, i.e. 'epoch3.pt'
         return True
 
     def get_dataset(self):

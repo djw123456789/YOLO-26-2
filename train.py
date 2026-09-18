@@ -12,11 +12,12 @@ def main():
     run_name = "2160-yolo26-agrf-e200-b16-s42"
 
     # 训练结果固定保存到项目根目录 outputs
-    out_dir = root_dir / "outputs" / "no-pretrained"
+    out_dir = (root_dir / "outputs" / "no-pretrained").resolve()
     # out_dir = root_dir / "outputs" / "pretrained"
 
     # 检查上次训练是否训练完成
-    last_ckpt = Path(out_dir) / run_name / "weights" / "last.pt"
+    run_dir = (out_dir / run_name).resolve()
+    last_ckpt = run_dir / "weights" / "last.pt"
 
     # 是否继续训练，默认为false
     resume = False
@@ -25,24 +26,25 @@ def main():
     seed = 42
 
     # 模型配置
-    model_cfg = "./yolo26n-agrf.yaml"
+    model_cfg = root_dir / "yolo26n-agrf.yaml"
 
     # 预训练权重
-    pretrained_ckpt = "yolo26n.pt"
+    pretrained_ckpt = root_dir / "yolo26n.pt"
 
     device = 0 if torch.cuda.is_available() else "cpu"
 
     if last_ckpt.exists():
         model = YOLO(str(last_ckpt))
-        resume=True
-        pretrained=False
+        resume = str(last_ckpt)
+        pretrained = False
     else:
-        model = YOLO(model_cfg)
-        pretrained=pretrained_ckpt
+        model = YOLO(str(model_cfg))
+        resume = False
+        pretrained = str(pretrained_ckpt)
 
     # 开始训练
     model.train(
-        data="./datasets/tt100k_aug_2160/TT100K.yaml",  # 数据集配置
+        data=str(root_dir / "datasets" / "tt100k_aug_2160" / "TT100K.yaml"),  # 数据集配置
         epochs=200,
         imgsz=640,
         batch=16,
@@ -52,8 +54,11 @@ def main():
         pretrained=False,
         workers=2,
         seed=seed,
-        project=out_dir,
+        project=str(out_dir),
         name=run_name,
+        # 恢复训练时显式覆盖 checkpoint 中保存的旧路径，避免 Windows 路径转义或工作目录变化。
+        save_dir=str(run_dir),
+        exist_ok=True,
         patience=50,
     )
 
