@@ -1,28 +1,21 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class AGRF(nn.Module):
     """
     Agreement-Guided Reliability Fusion (AGRF).
 
-    AGRF is designed to replace a two-input Concat node in a PAN/FPN neck
-    without changing the output channel count.
+    AGRF replaces a two-input Concat node while preserving the original
+    output channel count.
 
-    Given two spatially aligned features Xa and Xb:
-        1) Project both features into a lightweight shared embedding space.
-        2) Estimate local cross-scale agreement using cosine similarity,
-           response evidence, and embedding discrepancy.
-        3) Estimate global branch reliability from pooled branch statistics.
-        4) Combine local/global reliability logits and perform competitive
-           softmax routing between the two branches.
-        5) Use mean-one normalization so equal routing weights correspond to
-           an identity-amplitude Concat:
-               wa = wb = 1  at initialization.
-        6) Concatenate the dynamically reweighted original features.
+    Main idea:
+        - compare two aligned scales through channel-invariant spatial evidence;
+        - estimate their cross-scale agreement/disagreement;
+        - use independent residual recalibration instead of competitive routing;
+        - initialize exactly as the original Concat.
 
-    This module does NOT use manually tuned alpha/beta fusion coefficients.
+    No manually tuned alpha/beta fusion coefficient is used.
 
     Args:
         channels (list[int] | tuple[int, int]):
@@ -38,41 +31,16 @@ class AGRF(nn.Module):
             )
 
         c_a, c_b = int(channels[0]), int(channels[1])
-
         if c_a < 1 or c_b < 1:
             raise ValueError(
                 f"AGRF input channels must be positive, got {channels}."
             )
 
         self.channels = (c_a, c_b)
+        self.eps = 1e-6
 
-        # Lightweight shared reliability embedding.
-        # The compression width is structurally derived from input channels;
-        # it is not a manually tuned fusion coefficient.
-        c_r = max(8, min(c_a, c_b) // 8)
-        self.reliability_channels = c_r
-
-        self.proj_a = nn.Sequential(
-            nn.Conv2d(c_a, c_r, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(c_r),
-        )
-
-        self.proj_b = nn.Sequential(
-            nn.Conv2d(c_b, c_r, kernel_size=1, stride=1, padding=0, bias=False),
-            nn.BatchNorm2d(c_r),
-        )
-
-        # -------------------------------------------------------------
-        # Local agreement-aware reliability router
-        # -------------------------------------------------------------
-        # Four input maps:
-        #   Ea   : branch-A absolute response evidence
-        #   Eb   : branch-B absolute response evidence
-        #   D    : cross-branch embedding discrepancy
-        #   S    : cosine agreement
-        #
-        # Output:
-        #   two spatial reliability logits, one for each branch.
+        # Local spatial reliability estimator:
+        # [relative_a, relative_b, disagreement, agreement] -> 2 residual logits.
         self.local_router = nn.Conv2d(
             4,
             2,
@@ -82,29 +50,21 @@ class AGRF(nn.Module):
             bias=True,
         )
 
-        # -------------------------------------------------------------
-        # Global reliability router
-        # -------------------------------------------------------------
+        # Global image-level reliability estimator.
         # Descriptor:
-        #   GAP(|Za|), GAP(|Zb|), GAP(|Za - Zb|)
+        # mean(|Ra-1|), mean(|Rb-1|), mean(D), mean(A), max(D), min(A)
+        hidden = 8
         self.global_router = nn.Sequential(
-            nn.Linear(c_r * 3, c_r, bias=True),
+            nn.Linear(6, hidden, bias=True),
             nn.SiLU(),
-            nn.Linear(c_r, 2, bias=True),
+            nn.Linear(hidden, 2, bias=True),
         )
 
-        # -------------------------------------------------------------
-        # Concat-preserving initialization
-        # -------------------------------------------------------------
-        # Zero final routing logits -> softmax([0, 0]) = [0.5, 0.5].
-        # Mean-one normalization in forward multiplies them by N=2,
-        # therefore the initial modulation is [1, 1].
-        #
-        # This makes AGRF start from the amplitude behavior of the original
-        # Concat instead of imposing a handcrafted preference.
+        # Identity initialization:
+        # residual = tanh(0) = 0 -> scale = 1.
+        # Therefore AGRF starts exactly as standard Concat.
         nn.init.zeros_(self.local_router.weight)
         nn.init.zeros_(self.local_router.bias)
-
         nn.init.zeros_(self.global_router[-1].weight)
         nn.init.zeros_(self.global_router[-1].bias)
 
@@ -139,74 +99,73 @@ class AGRF(nn.Module):
 
         return x_a, x_b
 
+    def _spatial_evidence(self, x):
+        # Channel-invariant RMS spatial response.
+        return torch.sqrt(
+            x.pow(2).mean(dim=1, keepdim=True) + self.eps
+        )
+
+    def _relative_evidence(self, evidence):
+        # Normalize by each image's own spatial mean.
+        spatial_mean = evidence.mean(
+            dim=(2, 3),
+            keepdim=True,
+        )
+        return evidence / (spatial_mean + self.eps)
+
     def forward(self, x):
         x_a, x_b = self._check_inputs(x)
 
-        # Shared reliability embeddings.
-        z_a = self.proj_a(x_a)
-        z_b = self.proj_b(x_b)
+        # -------------------------------------------------------------
+        # Channel-invariant spatial evidence
+        # -------------------------------------------------------------
+        evidence_a = self._spatial_evidence(x_a)
+        evidence_b = self._spatial_evidence(x_b)
+
+        relative_a = self._relative_evidence(evidence_a)
+        relative_b = self._relative_evidence(evidence_b)
 
         # -------------------------------------------------------------
-        # Local cross-scale reliability evidence
+        # Cross-scale agreement / disagreement
         # -------------------------------------------------------------
-        evidence_a = z_a.abs().mean(dim=1, keepdim=True)
-        evidence_b = z_b.abs().mean(dim=1, keepdim=True)
+        disagreement = (relative_a - relative_b).abs()
 
-        discrepancy = (z_a - z_b).abs().mean(dim=1, keepdim=True)
+        # Fixed monotonic mapping:
+        # D=0 -> A=1; larger disagreement -> smaller agreement.
+        agreement = torch.exp(-disagreement)
 
-        z_a_norm = F.normalize(
-            z_a,
-            p=2,
-            dim=1,
-            eps=1e-6,
-        )
-        z_b_norm = F.normalize(
-            z_b,
-            p=2,
-            dim=1,
-            eps=1e-6,
-        )
-
-        agreement = (z_a_norm * z_b_norm).sum(
-            dim=1,
-            keepdim=True,
-        )
-
+        # -------------------------------------------------------------
+        # Local reliability residual
+        # -------------------------------------------------------------
         local_descriptor = torch.cat(
             (
-                evidence_a,
-                evidence_b,
-                discrepancy,
+                relative_a,
+                relative_b,
+                disagreement,
                 agreement,
             ),
             dim=1,
         )
-
         local_logits = self.local_router(local_descriptor)
 
         # -------------------------------------------------------------
-        # Global branch reliability
+        # Global reliability residual
         # -------------------------------------------------------------
-        global_a = F.adaptive_avg_pool2d(
-            z_a.abs(),
-            output_size=1,
-        ).flatten(1)
-
-        global_b = F.adaptive_avg_pool2d(
-            z_b.abs(),
-            output_size=1,
-        ).flatten(1)
-
-        global_diff = F.adaptive_avg_pool2d(
-            (z_a - z_b).abs(),
-            output_size=1,
-        ).flatten(1)
+        deviation_a = (relative_a - 1.0).abs().mean(dim=(2, 3))
+        deviation_b = (relative_b - 1.0).abs().mean(dim=(2, 3))
+        mean_disagreement = disagreement.mean(dim=(2, 3))
+        mean_agreement = agreement.mean(dim=(2, 3))
+        max_disagreement = disagreement.amax(dim=(2, 3))
+        min_agreement = agreement.amin(dim=(2, 3))
 
         global_descriptor = torch.cat(
             (
-                global_a,
-                global_b,
-                global_diff,
+                deviation_a,
+                deviation_b,
+                mean_disagreement,
+                mean_agreement,
+                max_disagreement,
+                min_agreement,
             ),
             dim=1,
         )
@@ -215,30 +174,20 @@ class AGRF(nn.Module):
         global_logits = global_logits[:, :, None, None]
 
         # -------------------------------------------------------------
-        # Competitive reliability routing
+        # Independent residual recalibration
         # -------------------------------------------------------------
-        route_logits = local_logits + global_logits
+        # No softmax competition. Both branches may be enhanced, preserved,
+        # or suppressed independently.
+        residual_logits = local_logits + global_logits
+        residual = torch.tanh(residual_logits)
 
-        route_weight = torch.softmax(
-            route_logits,
-            dim=1,
-        )
+        scale_a = 1.0 + residual[:, 0:1]
+        scale_b = 1.0 + residual[:, 1:2]
 
-        # Mean-one normalization:
-        # for two branches, uniform softmax 0.5 -> modulation weight 1.0.
-        route_weight = route_weight * route_weight.shape[1]
-
-        weight_a = route_weight[:, 0:1]
-        weight_b = route_weight[:, 1:2]
-
-        # Reweight original (not compressed) features, preserving information
-        # capacity and keeping output channels identical to standard Concat.
-        out = torch.cat(
+        return torch.cat(
             (
-                x_a * weight_a,
-                x_b * weight_b,
+                x_a * scale_a,
+                x_b * scale_b,
             ),
             dim=1,
         )
-
-        return out

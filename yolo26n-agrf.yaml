@@ -1,5 +1,7 @@
 # YOLO26n + AGRF-Neck
-# Baseline stem is unchanged. Detect remains P3/P4/P5.
+# AGRF is used only in the top-down path.
+# Bottom-up PAN keeps the original Concat.
+# Detect remains P3/P4/P5.
 
 nc: 80
 end2end: True
@@ -29,22 +31,22 @@ backbone:
 head:
   # Top-down: P5 -> P4
   - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # 11
-  - [[-1, 6], 1, AGRF, []]                     # 12 reliability fusion
+  - [[-1, 6], 1, AGRF, []]                     # 12
   - [-1, 2, C3k2, [512, True]]                 # 13
 
   # Top-down: P4 -> P3
   - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # 14
-  - [[-1, 4], 1, AGRF, []]                     # 15 reliability fusion
+  - [[-1, 4], 1, AGRF, []]                     # 15
   - [-1, 2, C3k2, [256, True]]                 # 16 P3/8-small
 
   # Bottom-up: P3 -> P4
   - [-1, 1, Conv, [256, 3, 2]]                 # 17
-  - [[-1, 13], 1, AGRF, []]                    # 18 reliability fusion
+  - [[-1, 13], 1, Concat, [1]]                 # 18
   - [-1, 2, C3k2, [512, True]]                 # 19 P4/16-medium
 
   # Bottom-up: P4 -> P5
   - [-1, 1, Conv, [512, 3, 2]]                 # 20
-  - [[-1, 10], 1, AGRF, []]                    # 21 reliability fusion
+  - [[-1, 10], 1, Concat, [1]]                 # 21
   - [-1, 1, C3k2, [1024, True, 0.5, True]]     # 22 P5/32-large
 
   - [[16, 19, 22], 1, Detect, [nc]]            # 23 Detect(P3,P4,P5)
