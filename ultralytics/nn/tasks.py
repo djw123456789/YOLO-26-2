@@ -18,6 +18,7 @@ from ultralytics.nn.modules import (
     PSICConv,
     WGFS,
     AGRF,
+    SCDT,
     # -----------------以上是改进的模块
     AIFI,
     C1,
@@ -2122,6 +2123,21 @@ def parse_model(d, ch, verbose=True):
             c2 = sum(input_channels)
 
             # AGRF(channels)
+            args = [input_channels]
+
+        elif m is SCDT:
+            if not isinstance(f, list) or len(f) != 2:
+                raise ValueError(
+                    f"SCDT expects exactly two input layers, but got from={f}."
+                )
+
+            input_channels = [ch[x] for x in f]
+
+            # SCDT outputs an enhanced semantic branch, so its output channel
+            # count is exactly the second input's channel count.
+            c2 = input_channels[1]
+
+            # SCDT([detail_channels, semantic_channels])
             args = [input_channels]
         # -----------------改进的模块
         elif m is Concat:

@@ -22,6 +22,7 @@ from .improve import (
     PSICConv,
     WGFS,
     AGRF,
+    SCDT,
 )
 
 from .block import (
@@ -120,6 +121,7 @@ __all__ = (
     "PSICConv",
     "WGFS",
     "AGRF",
+    "SCDT",
     # -----------------以上是改进的模块
     "AIFI",
     "C1",
