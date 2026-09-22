@@ -9,7 +9,7 @@ def main():
     root_dir = Path(__file__).resolve().parent
 
     # 自定义实验名称 没加exp默认是该模块的第一次训练 exp1表示该模块训练的第一次 exp2表示修改了该模块训练的第二次
-    run_name = "2160-yolo26-scdt-exp1-e200-b16-s42"
+    run_name = "2160-yolo26-scdt-exp2-e200-b16-s42"
 
     # 训练结果固定保存到项目根目录 outputs
     out_dir = (root_dir / "outputs" / "no-pretrained").resolve()

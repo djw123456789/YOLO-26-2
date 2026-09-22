@@ -1,36 +1,26 @@
 import torch
 import torch.nn as nn
-import torch.nn.functional as F
 
 
 class SCDT(nn.Module):
     """
     Semantic-Conditioned Detail Transport (SCDT).
 
-    SCDT uses a high-resolution shallow feature as a detail reservoir and lets
-    the semantically stronger P3 feature retrieve useful sub-pixel details.
+    The high-resolution P2 feature is treated as a detail reservoir.
+    P3 semantics dynamically retrieve sub-pixel detail residuals.
 
-    The module expects exactly two inputs:
-        x_detail: [B, C_d, 2H, 2W]  -- high-resolution P2 feature
-        x_sem:    [B, C_s,  H,  W]  -- semantic P3 feature
+    Important initialization:
+        - the four sub-pixel residuals sum to zero;
+        - the semantic query projection is initialized to zero, so all four
+          routing logits are exactly equal at initialization;
+        - therefore routing is exactly uniform and retrieved_detail == 0;
+        - out_proj remains normally initialized (non-zero), so gradients can
+          flow from the detection loss into the routing branch immediately.
 
-    Main steps:
-        1. Losslessly rearrange each 2x2 P2 neighborhood into four aligned
-           sub-pixel feature vectors at the P3 grid.
-        2. Remove the local common component and retain four sub-pixel detail
-           residuals.
-        3. Build a semantic query from P3 and shared keys from the four detail
-           residuals.
-        4. Perform four-way local routing to retrieve the detail residual that
-           is most compatible with the P3 semantics at each spatial location.
-        5. Inject the retrieved detail through a zero-initialized projection:
-
-               Y = x_sem + Proj(D_retrieved)
-
-           so the module is exactly an identity mapping at initialization.
-
-    This module does not add a P2 detection head and does not change the P3
-    output resolution or channel count.
+    Thus:
+        output == x_sem exactly at initialization,
+    while avoiding the gradient starvation caused by a zero-initialized
+    residual output projection.
 
     Args:
         channels (list[int] | tuple[int, int]):
@@ -55,13 +45,18 @@ class SCDT(nn.Module):
         self.detail_channels = c_detail
         self.semantic_channels = c_sem
 
-        # Lightweight joint query-key space.
-        # Width is structurally derived from the input channels rather than
-        # introduced as a manually tuned fusion coefficient.
+        # Lightweight shared query-key space.
         c_attn = max(8, min(c_detail, c_sem) // 8)
         self.attn_channels = c_attn
         self.scale = c_attn ** -0.5
 
+        # Semantic query.
+        # Zeroing ONLY the convolution weight makes q == 0 initially.
+        # Hence all four dot-product logits are 0 -> exact uniform routing.
+        #
+        # Unlike zero-initializing out_proj, this still permits a non-zero
+        # gradient to query.weight on the first backward pass because keys and
+        # out_proj are both non-zero.
         self.query = nn.Sequential(
             nn.Conv2d(
                 c_sem,
@@ -74,7 +69,7 @@ class SCDT(nn.Module):
             nn.BatchNorm2d(c_attn),
         )
 
-        # One shared key projection is used for all four sub-pixel positions.
+        # Shared key projection for all four sub-pixel detail residuals.
         self.key = nn.Sequential(
             nn.Conv2d(
                 c_detail,
@@ -87,8 +82,9 @@ class SCDT(nn.Module):
             nn.BatchNorm2d(c_attn),
         )
 
-        # Zero-initialized residual projection makes SCDT exactly reduce to
-        # the original P3 branch at the start of training.
+        # IMPORTANT:
+        # Keep out_proj with normal PyTorch initialization.
+        # Do NOT zero-initialize this layer.
         self.out_proj = nn.Conv2d(
             c_detail,
             c_sem,
@@ -97,7 +93,11 @@ class SCDT(nn.Module):
             padding=0,
             bias=False,
         )
-        nn.init.zeros_(self.out_proj.weight)
+
+        # Identity-safe but gradient-active initialization:
+        # q = 0 -> route_i = 1/4.
+        # Since sum_i detail_i = 0, retrieved_detail = 0 exactly.
+        nn.init.zeros_(self.query[0].weight)
 
     @staticmethod
     def _check_inputs(x):
@@ -137,10 +137,7 @@ class SCDT(nn.Module):
     @staticmethod
     def _split_subpixels(x_detail, h, w):
         """
-        Losslessly map [B, C, 2H, 2W] to [B, 4, C, H, W].
-
-        The four groups correspond to the four spatial positions inside each
-        2x2 neighborhood. No averaging or strided sampling is performed.
+        Losslessly map [B, C, 2H, 2W] -> [B, 4, C, H, W].
         """
         b, c, _, _ = x_detail.shape
 
@@ -157,21 +154,17 @@ class SCDT(nn.Module):
         b, _, h, w = x_sem.shape
 
         # -------------------------------------------------------------
-        # 1. Lossless 2x2 sub-pixel decomposition
+        # 1. Lossless sub-pixel decomposition
         # -------------------------------------------------------------
         groups = self._split_subpixels(
             x_detail,
             h,
             w,
-        )  # [B, 4, C_d, H, W]
+        )
 
         # -------------------------------------------------------------
-        # 2. Isolate sub-pixel detail residuals
+        # 2. Zero-sum within-cell detail residuals
         # -------------------------------------------------------------
-        # The local common component is already largely represented by the
-        # lower-resolution semantic path. We transport only within-cell
-        # deviations to avoid redundantly injecting shallow low-frequency
-        # responses.
         local_common = groups.mean(
             dim=1,
             keepdim=True,
@@ -179,9 +172,9 @@ class SCDT(nn.Module):
         detail = groups - local_common
 
         # -------------------------------------------------------------
-        # 3. Semantic query and shared detail keys
+        # 3. Semantic query and detail keys
         # -------------------------------------------------------------
-        query = self.query(x_sem)  # [B, C_a, H, W]
+        query = self.query(x_sem)
 
         keys = self.key(
             detail.reshape(
@@ -191,6 +184,7 @@ class SCDT(nn.Module):
                 w,
             )
         )
+
         keys = keys.reshape(
             b,
             4,
@@ -200,13 +194,13 @@ class SCDT(nn.Module):
         )
 
         # -------------------------------------------------------------
-        # 4. Semantic-conditioned four-way sub-pixel retrieval
+        # 4. Semantic-conditioned sub-pixel routing
         # -------------------------------------------------------------
         scores = (
             keys * query.unsqueeze(1)
         ).sum(
             dim=2
-        ) * self.scale  # [B, 4, H, W]
+        ) * self.scale
 
         route = torch.softmax(
             scores,
@@ -217,11 +211,13 @@ class SCDT(nn.Module):
             detail * route.unsqueeze(2)
         ).sum(
             dim=1
-        )  # [B, C_d, H, W]
+        )
 
         # -------------------------------------------------------------
-        # 5. Identity-safe residual detail injection
+        # 5. Residual injection
         # -------------------------------------------------------------
-        residual = self.out_proj(retrieved_detail)
+        residual = self.out_proj(
+            retrieved_detail
+        )
 
         return x_sem + residual
