@@ -159,7 +159,7 @@ def print_highlight_table(table, header_color_value_cols=None, color_first_col=T
 
 if __name__ == '__main__':
     # 选择训练好的权重路径
-    model_path = 'D:/vscode/workspace/recurrencePaper/YOLO-26-2/outputs/no-pretrained/2160-yolo26-scdt-exp1-e200-b16-s42/weights/best.pt'
+    model_path = 'D:/vscode/workspace/recurrencePaper/YOLO-26-2/outputs/no-pretrained/2160-yolo26-scdt-exp2-e200-b16-s42/weights/best.pt'
     # 设置用于计算指标的图像尺寸
     imgsz = 640
 
@@ -173,7 +173,7 @@ if __name__ == '__main__':
                         # iou=0.7,
                         # save_json=True,
                         project='D:/vscode/workspace/recurrencePaper/YOLO-26-2/outputs/no-pretrained',
-                        name='2160-yolo26-scdt-exp1-e200-b16-s42-test',
+                        name='2160-yolo26-scdt-exp2-e200-b16-s42-test',
                         device=os.environ.get("CUDA_VISIBLE_DEVICES", 0), # 训练设备选择，不在这里设置，在头部设置，详细可以看UserGuide.md中的常见问题第4点
                         # end2end=False # 如果训练的是NMSFree类型的模型，不想用一对一的头可以设置False
                         )
