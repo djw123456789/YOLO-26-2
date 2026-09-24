@@ -4,7 +4,7 @@ import torch
 
 from ultralytics import YOLO
 
-#123
+
 def main():
     root_dir = Path(__file__).resolve().parent
 
