@@ -19,6 +19,7 @@ from ultralytics.nn.modules import (
     WGFS,
     AGRF,
     SCDT,
+    AISC,
     # -----------------以上是改进的模块
     AIFI,
     C1,
@@ -2139,6 +2140,14 @@ def parse_model(d, ch, verbose=True):
 
             # SCDT([detail_channels, semantic_channels])
             args = [input_channels]
+
+        elif m is AISC:
+           if isinstance(f, list):
+               raise ValueError(
+                   f"AISC expects one input layer, but got from={f}."
+               )
+           c2 = ch[f]
+           args = [c2]
         # -----------------改进的模块
         elif m is Concat:
             c2 = sum(ch[x] for x in f)

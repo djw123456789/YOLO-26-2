@@ -3,6 +3,7 @@ from .psicconv import PSICConv
 from .wgsf import WGFS
 from .agrf import AGRF
 from .scdt import SCDT
+from .aisc import AISC
 
 __all__ = (
     "EFCM",
@@ -10,4 +11,5 @@ __all__ = (
     "WGFS",
     "AGRF",
     "SCDT",
+    "AISC",
     )

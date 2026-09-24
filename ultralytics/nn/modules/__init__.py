@@ -23,6 +23,7 @@ from .improve import (
     WGFS,
     AGRF,
     SCDT,
+    AISC,
 )
 
 from .block import (
@@ -122,6 +123,7 @@ __all__ = (
     "WGFS",
     "AGRF",
     "SCDT",
+    "AISC",
     # -----------------以上是改进的模块
     "AIFI",
     "C1",
