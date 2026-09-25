@@ -24,6 +24,7 @@ from .improve import (
     AGRF,
     SCDT,
     AISC,
+    DRCC,
 )
 
 from .block import (
@@ -124,6 +125,7 @@ __all__ = (
     "AGRF",
     "SCDT",
     "AISC",
+    "DRCC",
     # -----------------以上是改进的模块
     "AIFI",
     "C1",

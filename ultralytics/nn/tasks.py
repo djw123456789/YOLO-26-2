@@ -20,6 +20,7 @@ from ultralytics.nn.modules import (
     AGRF,
     SCDT,
     AISC,
+    DRCC,
     # -----------------以上是改进的模块
     AIFI,
     C1,
@@ -2148,6 +2149,17 @@ def parse_model(d, ch, verbose=True):
                )
            c2 = ch[f]
            args = [c2]
+
+        elif m is DRCC:
+            if isinstance(f, list):
+                raise ValueError(
+                    f"DRCC expects one input layer, but got from={f}."
+                )
+
+            c2 = ch[f]
+
+            # DRCC(channels)
+            args = [c2]
         # -----------------改进的模块
         elif m is Concat:
             c2 = sum(ch[x] for x in f)
