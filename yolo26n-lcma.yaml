@@ -1,0 +1,49 @@
+# YOLO26n + LCMA
+# LCMA modifies ONLY P4 -> P3 top-down alignment.
+# Detect remains P3/P4/P5.
+
+nc: 80
+end2end: True
+reg_max: 1
+
+scales:
+  n: [0.50, 0.25, 1024]
+  s: [0.50, 0.50, 1024]
+  m: [0.50, 1.00, 512]
+  l: [1.00, 1.00, 512]
+  x: [1.00, 1.50, 512]
+
+backbone:
+  - [-1, 1, Conv, [64, 3, 2]]
+  - [-1, 1, Conv, [128, 3, 2]]
+  - [-1, 2, C3k2, [256, False, 0.25]]
+  - [-1, 1, Conv, [256, 3, 2]]
+  - [-1, 2, C3k2, [512, False, 0.25]]         # 4 lateral P3
+  - [-1, 1, Conv, [512, 3, 2]]
+  - [-1, 2, C3k2, [512, True]]
+  - [-1, 1, Conv, [1024, 3, 2]]
+  - [-1, 2, C3k2, [1024, True]]
+  - [-1, 1, SPPF, [1024, 5, 3, True]]
+  - [-1, 2, C2PSA, [1024]]
+
+head:
+  # P5 -> P4 unchanged
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # 11
+  - [[-1, 6], 1, Concat, [1]]                  # 12
+  - [-1, 2, C3k2, [512, True]]                 # 13 P4 semantic
+
+  # P4 -> P3: LCMA performs resize + local alignment
+  - [[13, 4], 1, LCMA, []]                     # 14 aligned high-level P3
+  - [[-1, 4], 1, Concat, [1]]                  # 15
+  - [-1, 2, C3k2, [256, True]]                 # 16 P3
+
+  # bottom-up PAN unchanged
+  - [-1, 1, Conv, [256, 3, 2]]                 # 17
+  - [[-1, 13], 1, Concat, [1]]                 # 18
+  - [-1, 2, C3k2, [512, True]]                 # 19 P4
+
+  - [-1, 1, Conv, [512, 3, 2]]                 # 20
+  - [[-1, 10], 1, Concat, [1]]                 # 21
+  - [-1, 1, C3k2, [1024, True, 0.5, True]]     # 22 P5
+
+  - [[16, 19, 22], 1, Detect, [nc]]            # 23

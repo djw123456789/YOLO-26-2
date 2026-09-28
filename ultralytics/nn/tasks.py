@@ -21,6 +21,7 @@ from ultralytics.nn.modules import (
     SCDT,
     AISC,
     DRCC,
+    LCMA,
     # -----------------以上是改进的模块
     AIFI,
     C1,
@@ -2160,6 +2161,23 @@ def parse_model(d, ch, verbose=True):
 
             # DRCC(channels)
             args = [c2]
+
+        elif m is LCMA:
+           if not isinstance(f, list) or len(f) != 2:
+               raise ValueError(
+                   f"LCMA expects exactly two input layers, but got from={f}."
+               )
+
+           input_channels = [ch[x] for x in f]
+
+           if input_channels[0] != input_channels[1]:
+               raise ValueError(
+                   "LCMA first-stage design requires equal channels, "
+                   f"but got {input_channels}."
+               )
+
+           c2 = input_channels[0]
+           args = [input_channels]
         # -----------------改进的模块
         elif m is Concat:
             c2 = sum(ch[x] for x in f)

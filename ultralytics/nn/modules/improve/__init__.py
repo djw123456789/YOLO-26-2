@@ -5,6 +5,7 @@ from .agrf import AGRF
 from .scdt import SCDT
 from .aisc import AISC
 from .drcc import DRCC
+from .lcma import LCMA
 
 __all__ = (
     "EFCM",
@@ -14,4 +15,5 @@ __all__ = (
     "SCDT",
     "AISC",
     "DRCC",
+    "LCMA",
     )

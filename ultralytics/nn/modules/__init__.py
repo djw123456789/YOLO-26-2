@@ -25,6 +25,7 @@ from .improve import (
     SCDT,
     AISC,
     DRCC,
+    LCMA,
 )
 
 from .block import (
@@ -126,6 +127,7 @@ __all__ = (
     "SCDT",
     "AISC",
     "DRCC",
+    "LCMA",
     # -----------------以上是改进的模块
     "AIFI",
     "C1",
