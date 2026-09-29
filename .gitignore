@@ -9,3 +9,5 @@ __pycache__/
 ultralytics/nn/__pycache__/*
 
 *.pyc
+
+论文/*
