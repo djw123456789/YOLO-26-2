@@ -18,6 +18,8 @@ from ultralytics.utils.torch_utils import autocast
 from .metrics import bbox_iou, probiou
 from .tal import bbox2dist, rbox2dist
 
+from .improve.mcld import MCLDLoss
+
 
 class VarifocalLoss(nn.Module):
     """Varifocal loss by Zhang et al.
@@ -1323,6 +1325,79 @@ class E2ELoss:
     def decay(self, x) -> float:
         """Calculate the decayed weight for one-to-many loss based on the current update step."""
         return max(1 - x / max(self.one2one.hyp.epochs - 1, 1), 0) * (self.o2m_copy - self.final_o2m) + self.final_o2m
+
+#----------改进部分
+
+class MCLDE2ELoss(E2ELoss):
+    """
+    YOLO26 end-to-end loss with training-only MCLD.
+
+    The raw MCLD:
+      - reuses the existing l1/dfl gain,
+      - follows the existing O2O schedule,
+      - adds no new manually tuned lambda.
+    """
+
+    def __init__(self, model: torch.nn.Module, loss_fn=v8DetectionLoss):
+        super().__init__(model, loss_fn)
+        self.mcld = MCLDLoss()
+        self.last_mcld = torch.tensor(
+            0.0,
+            device=self.one2one.device,
+        )
+
+    def __call__(
+        self,
+        preds: Any,
+        batch: dict[str, torch.Tensor],
+    ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
+        preds = self.one2many.parse_output(preds)
+
+        one2many = preds["one2many"]
+        one2one = preds["one2one"]
+
+        loss_one2many = self.one2many.loss(
+            one2many,
+            batch,
+        )
+        loss_one2one = self.one2one.loss(
+            one2one,
+            batch,
+        )
+
+        raw_mcld = self.mcld(
+            self.one2many,
+            self.one2one,
+            one2many,
+            one2one,
+            batch,
+        )
+
+        batch_size = one2one["boxes"].shape[0]
+
+        # MCLD is coordinate-L1-like, so reuse the existing l1/dfl gain.
+        mcld_term = (
+            raw_mcld
+            * self.one2one.hyp.dfl
+            * batch_size
+        )
+
+        self.last_mcld = mcld_term.detach()
+
+        total_loss = (
+            loss_one2many[0] * self.o2m
+            + (
+                loss_one2one[0]
+                + mcld_term
+            )
+            * self.o2o
+        )
+
+        # Preserve original logger-facing loss dict for compatibility.
+        return total_loss, loss_one2one[1]
+
+
+#----------改进部分
 
 
 class TVPDetectLoss:
