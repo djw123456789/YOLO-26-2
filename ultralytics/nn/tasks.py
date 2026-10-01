@@ -604,9 +604,18 @@ class DetectionModel(BaseModel):
         y[-1] = y[-1][..., i:]  # small
         return y
 
+#    def init_criterion(self):
+#        """Initialize the loss criterion for the DetectionModel."""
+#        return E2ELoss(self) if getattr(self, "end2end", False) else v8DetectionLoss(self)
+
+#--------修改
     def init_criterion(self):
         """Initialize the loss criterion for the DetectionModel."""
-        return E2ELoss(self) if getattr(self, "end2end", False) else v8DetectionLoss(self)
+        if getattr(self, "end2end", False):
+            if self.yaml.get("mcld", False):
+                return MCLDE2ELoss(self)
+            return E2ELoss(self)
+        return v8DetectionLoss(self)
 
 
 class OBBModel(DetectionModel):
@@ -781,19 +790,11 @@ class PoseModel(DetectionModel):
             cfg["kpt_shape"] = data_kpt_shape
         super().__init__(cfg=cfg, ch=ch, nc=nc, verbose=verbose)
 
-#    def init_criterion(self):
-#        """Initialize the loss criterion for the PoseModel."""
-#        loss = PoseLoss26 if isinstance(self.model[-1], Pose26) else v8PoseLoss
-#        return E2ELoss(self, loss) if self.end2end else loss(self)
-
-    #---------修改
     def init_criterion(self):
-        """Initialize the loss criterion for the DetectionModel."""
-        if getattr(self, "end2end", False):
-            if self.yaml.get("mcld", False):
-                return MCLDE2ELoss(self)
-            return E2ELoss(self)
-        return v8DetectionLoss(self)
+        """Initialize the loss criterion for the PoseModel."""
+        loss = PoseLoss26 if isinstance(self.model[-1], Pose26) else v8PoseLoss
+        return E2ELoss(self, loss) if self.end2end else loss(self)
+
 
 
 class DepthModel(DetectionModel):

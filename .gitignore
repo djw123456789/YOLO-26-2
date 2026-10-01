@@ -11,3 +11,4 @@ ultralytics/nn/__pycache__/*
 *.pyc
 
 论文/*
+figures/*
