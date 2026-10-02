@@ -9,17 +9,14 @@ from ultralytics.utils.tal import make_anchors
 
 class MCLDLoss:
     """
-    Multi-hypothesis Consensus Localization Distillation (MCLD).
+    Multi-hypothesis Consensus Localization Distillation (MCLD)
+    with a coordinate-wise Teacher-Advantage Gate.
 
-    Training-only localization refinement for YOLO26 end-to-end detection.
+    Distillation is active only when the detached O2M consensus is
+    closer to GT than the detached O2O student for that coordinate.
 
-    O2M provides multiple positive localization hypotheses for one GT.
-    MCLD forms a detached quality-weighted consensus and coordinate-wise
-    reliability from those hypotheses, then guides the O2O localization
-    prediction used for inference.
-
-    No new learnable parameter, size threshold, uncertainty threshold,
-    or inference branch is introduced.
+    No new learnable parameter, lambda, size threshold, uncertainty
+    threshold, or inference branch is introduced.
     """
 
     def __init__(self, eps: float = 1e-9):
@@ -27,7 +24,7 @@ class MCLDLoss:
 
     @staticmethod
     def _as_xyxy_scale(gt_box: torch.Tensor, eps: float) -> torch.Tensor:
-        """Return [w, h, w, h] for xyxy coordinate normalization."""
+        """Return [w, h, w, h] for xyxy error normalization."""
         w = (gt_box[2] - gt_box[0]).clamp_min(eps)
         h = (gt_box[3] - gt_box[1]).clamp_min(eps)
         return torch.stack((w, h, w, h))
@@ -38,12 +35,6 @@ class MCLDLoss:
         preds: dict[str, torch.Tensor],
         batch: dict[str, torch.Tensor],
     ) -> dict[str, torch.Tensor]:
-        """
-        Reproduce current v8DetectionLoss assignment metadata.
-
-        pred_bboxes_px keeps gradients for the O2O student.
-        Assignment decisions remain detached, matching the original loss.
-        """
         pred_distri = preds["boxes"].permute(0, 2, 1).contiguous()
         pred_scores = preds["scores"].permute(0, 2, 1).contiguous()
 
@@ -121,7 +112,6 @@ class MCLDLoss:
         one2one_preds: dict[str, torch.Tensor],
         batch: dict[str, torch.Tensor],
     ) -> torch.Tensor:
-        """Compute raw MCLD before existing YOLO gains/schedules."""
         teacher = self._assignment_meta(
             one2many_criterion,
             one2many_preds,
@@ -179,6 +169,9 @@ class MCLDLoss:
                 if s_idx.numel() == 0:
                     continue
 
+                # -----------------------------
+                # O2M teacher consensus
+                # -----------------------------
                 teacher_boxes = (
                     teacher["pred_bboxes_px"][b, t_idx]
                     .detach()
@@ -213,17 +206,20 @@ class MCLDLoss:
                     + self.eps
                 )
 
-                gt_box = teacher["gt_bboxes"][b, gt_id].float()
+                gt_box = (
+                    teacher["gt_bboxes"][b, gt_id]
+                    .detach()
+                    .float()
+                )
+
                 coord_scale = self._as_xyxy_scale(
                     gt_box,
                     self.eps,
                 )
 
-                normalized_dispersion = (
-                    dispersion / coord_scale
-                )
+                normalized_dispersion = dispersion / coord_scale
 
-                coord_reliability = 1.0 / (
+                dispersion_reliability = 1.0 / (
                     1.0 + normalized_dispersion
                 )
 
@@ -232,16 +228,58 @@ class MCLDLoss:
                     max=1.0,
                 )
 
-                coord_reliability = (
-                    coord_reliability * group_quality
+                teacher_reliability = (
+                    dispersion_reliability
+                    * group_quality
                 )
 
+                # -----------------------------
+                # O2O student
+                # -----------------------------
                 student_boxes = (
                     student["pred_bboxes_px"][b, s_idx]
                     .float()
                 )
 
-                normalized_error = (
+                # -----------------------------
+                # Teacher-Advantage Gate
+                # -----------------------------
+                # Gate uses detached values only, so the student cannot
+                # "game" the gate through gradients.
+                teacher_error = (
+                    (consensus - gt_box).abs()
+                    / coord_scale
+                ).detach()
+
+                student_error_for_gate = (
+                    (
+                        student_boxes.detach()
+                        - gt_box[None, :]
+                    ).abs()
+                    / coord_scale[None, :]
+                )
+
+                teacher_advantage = (
+                    (
+                        student_error_for_gate
+                        - teacher_error[None, :]
+                    ).clamp_min(0.0)
+                    / (
+                        student_error_for_gate
+                        + teacher_error[None, :]
+                        + self.eps
+                    )
+                ).detach()
+
+                final_reliability = (
+                    teacher_reliability[None, :]
+                    * teacher_advantage
+                )
+
+                # -----------------------------
+                # Scale-normalized distillation
+                # -----------------------------
+                normalized_distill_error = (
                     (
                         student_boxes
                         - consensus[None, :]
@@ -250,8 +288,8 @@ class MCLDLoss:
                 )
 
                 per_student_loss = (
-                    normalized_error
-                    * coord_reliability[None, :]
+                    normalized_distill_error
+                    * final_reliability
                 ).mean(dim=-1)
 
                 gt_losses.append(
