@@ -1,0 +1,121 @@
+# YOLO26n + WGFS + LCMA + MCLD
+# Innovation 1: WGFS
+#   Preserve weak/small-target information during early sampling.
+#
+# Innovation 2: LCMA
+#   Align top-down P4 semantics with the lateral P3 feature before fusion.
+#
+# Innovation 3: MCLD
+#   Training-only localization refinement using O2M multi-hypothesis
+#   consensus and teacher-advantage gated O2O distillation.
+#
+# Detect remains P3/P4/P5.
+# No P2 detection head.
+# MCLD adds no inference branch or inference parameters.
+
+nc: 80
+
+end2end: True
+reg_max: 1
+
+# Enable MCLD loss in DetectionModel.init_criterion()
+mcld: True
+
+scales:
+  # [depth, width, max_channels]
+  n: [0.50, 0.25, 1024]
+  s: [0.50, 0.50, 1024]
+  m: [0.50, 1.00, 512]
+  l: [1.00, 1.00, 512]
+  x: [1.00, 1.50, 512]
+
+# ==============================================================
+# Backbone
+# WGFS replaces the original first two Conv downsampling stages.
+# ==============================================================
+
+backbone:
+
+  # WGFS internally performs the early sampling.
+  # Output resolution: P2 / 4
+  - [-1, 1, WGFS, [128]]                       # 0 P2/4
+
+  - [-1, 2, C3k2, [256, False, 0.25]]          # 1
+
+  # P3
+  - [-1, 1, Conv, [256, 3, 2]]                 # 2 P3/8
+  - [-1, 2, C3k2, [512, False, 0.25]]          # 3 lateral P3
+
+  # P4
+  - [-1, 1, Conv, [512, 3, 2]]                 # 4 P4/16
+  - [-1, 2, C3k2, [512, True]]                 # 5 lateral P4
+
+  # P5
+  - [-1, 1, Conv, [1024, 3, 2]]                # 6 P5/32
+  - [-1, 2, C3k2, [1024, True]]                # 7
+
+  - [-1, 1, SPPF, [1024, 5, 3, True]]          # 8
+  - [-1, 2, C2PSA, [1024]]                     # 9
+
+
+# ==============================================================
+# Head
+# LCMA is used ONLY for P4 -> P3 top-down alignment.
+# P5 -> P4 and bottom-up PAN remain unchanged.
+# ==============================================================
+
+head:
+
+  # ------------------------------------------------------------
+  # P5 -> P4
+  # unchanged standard top-down fusion
+  # ------------------------------------------------------------
+
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # 10
+  - [[-1, 5], 1, Concat, [1]]                  # 11
+  - [-1, 2, C3k2, [512, True]]                 # 12 P4 semantic
+
+
+  # ------------------------------------------------------------
+  # P4 -> P3
+  #
+  # LCMA inputs:
+  #   layer 12: high-level P4 semantic feature
+  #   layer 3 : backbone lateral P3 feature
+  #
+  # LCMA internally upsamples layer 12 to the spatial resolution
+  # of layer 3 and performs lateral-conditioned local alignment.
+  # ------------------------------------------------------------
+
+  - [[12, 3], 1, LCMA, []]                     # 13 aligned high-level P3
+
+  - [[-1, 3], 1, Concat, [1]]                  # 14
+  - [-1, 2, C3k2, [256, True]]                 # 15 P3/8-small
+
+
+  # ------------------------------------------------------------
+  # Bottom-up PAN: P3 -> P4
+  # ------------------------------------------------------------
+
+  - [-1, 1, Conv, [256, 3, 2]]                 # 16
+  - [[-1, 12], 1, Concat, [1]]                 # 17
+  - [-1, 2, C3k2, [512, True]]                 # 18 P4/16-medium
+
+
+  # ------------------------------------------------------------
+  # Bottom-up PAN: P4 -> P5
+  # ------------------------------------------------------------
+
+  - [-1, 1, Conv, [512, 3, 2]]                 # 19
+  - [[-1, 9], 1, Concat, [1]]                  # 20
+  - [-1, 1, C3k2, [1024, True, 0.5, True]]     # 21 P5/32-large
+
+
+  # ------------------------------------------------------------
+  # Detect:
+  #   layer 15 = P3
+  #   layer 18 = P4
+  #   layer 21 = P5
+  # ------------------------------------------------------------
+
+  - [[15, 18, 21], 1, Detect, [nc]]            # 22 Detect(P3, P4, P5)
