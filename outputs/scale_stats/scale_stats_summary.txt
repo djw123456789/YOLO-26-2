@@ -1,0 +1,54 @@
+========================================================================================
+TT100K TEST SCALE STATISTICS
+========================================================================================
+Dataset YAML       : D:\vscode\workspace\recurrencePaper\YOLO-26-2\datasets\tt100k_aug_2160\TT100K.yaml
+Split              : test
+Detector input     : 640 x 640
+Resize rule        : LetterBox(..., scaleup=False)
+Images found       : 2118
+Objects            : 5474
+Missing label files: 0
+Empty label files  : 0
+
+Equivalent side = sqrt(box area in detector-input space)
+----------------------------------------------------------------------------------------
+P10: eq_side=   5.665px | width=   5.313px | height=   5.953px
+P25: eq_side=   7.500px | width=   7.084px | height=   7.868px
+P50: eq_side=  11.093px | width=  10.415px | height=  11.876px
+P75: eq_side=  17.260px | width=  16.466px | height=  18.322px
+P90: eq_side=  26.034px | width=  24.958px | height=  27.750px
+P95: eq_side=  33.014px | width=  32.120px | height=  35.000px
+P99: eq_side=  51.200px | width=  51.068px | height=  52.072px
+
+Cumulative ratios
+----------------------------------------------------------------------------------------
+sqrt(area) < 8px          1606/5474  =  29.34%
+sqrt(area) < 12px         3003/5474  =  54.86%
+sqrt(area) < 16px         3883/5474  =  70.94%
+sqrt(area) < 20px         4460/5474  =  81.48%
+sqrt(area) < 24px         4797/5474  =  87.63%
+sqrt(area) < 28px         5024/5474  =  91.78%
+sqrt(area) < 32px         5162/5474  =  94.30%
+sqrt(area) < 40px         5340/5474  =  97.55%
+sqrt(area) < 48px         5402/5474  =  98.68%
+sqrt(area) < 64px         5464/5474  =  99.82%
+
+Supplementary fixed split
+----------------------------------------------------------------------------------------
+Tiny(<16)           :  3883 =  70.94%
+Small(16-32)        :  1279 =  23.36%
+Non-small(>=32)     :   312 =   5.70%
+
+COCO-style input-space split
+----------------------------------------------------------------------------------------
+Small(<32)          :  5162 =  94.30%
+Medium(32-96)       :   312 =   5.70%
+Large(>=96)         :     0 =   0.00%
+
+Usage guidance
+----------------------------------------------------------------------------------------
+1) Keep COCO-style <32^2 / 32^2-96^2 / >=96^2 as a standard-reference auxiliary result.
+2) If most GT are <32^2, use <16^2 / 16^2-32^2 / >=32^2 only as an explicitly
+   labeled TT100K-specific supplementary scale analysis.
+3) Do NOT choose thresholds according to which partition gives the largest model gain.
+4) Percentiles describe the dataset; they should not be tuned using model performance.
