@@ -12,3 +12,5 @@ ultralytics/nn/__pycache__/*
 
 论文/*
 figures/*
+
+outputs/controlled_conditions/*
